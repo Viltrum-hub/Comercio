@@ -1,4 +1,4 @@
-name: Verificar Comercio
+name: Verificar NovaMarket
 on:
   push:
   pull_request:
@@ -17,4 +17,6 @@ jobs:
           node --check app.js
           node --check core.js
       - name: Verificar carrito, precios y filtros
-        run: node --test tests/core.test.cjs
+        run: node --test tests/*.test.cjs
+      - name: Verificar páginas y enlaces
+        run: python3 tests/pages.test.py

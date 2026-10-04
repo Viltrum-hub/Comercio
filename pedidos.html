@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#173b70"><meta name="description" content="Consulta el resumen de tus pedidos de demostración de NovaMarket guardados en este navegador.">
+  <title>Mis pedidos · NovaMarket</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect rx='25' width='100' height='100' fill='%23173b70'/%3E%3Ctext x='50' y='72' text-anchor='middle' fill='%23ff805c' font-size='70' font-family='sans-serif' font-weight='bold'%3EN%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="urban.css"><script src="core.js" defer></script><script src="app.js" defer></script>
+</head>
+<body data-page="pedidos">
+  <a class="skip-link" href="#contenido">Ir al contenido</a>
+  <div class="announcement">Todo para tu día, en un solo lugar. <span>Envío demo gratis desde $35</span><span class="demo-pill">TIENDA DEMO</span></div>
+  <header class="header">
+    <div class="container header-main">
+      <a href="index.html" class="logo" aria-label="NovaMarket, inicio"><span class="logo-mark">N<span>✦</span></span><span>Nova<span class="logo-market">Market</span><span class="logo-dot">.</span></span></a>
+      <form class="search" id="searchForm" role="search" action="productos.html" method="get"><span class="icon" data-icon="search"></span><input id="search" name="q" type="search" placeholder="Busca lo que necesitas hoy…" aria-label="Buscar productos"><button class="search-submit" aria-label="Buscar en el catálogo">↗</button></form>
+      <a class="icon-button favorite-header" href="favoritos.html" aria-label="Ver favoritos"><span class="icon" data-icon="heart"></span></a>
+      <a class="icon-button" href="pedidos.html" aria-label="Mis pedidos"><span class="icon" data-icon="user"></span></a>
+      <button class="cart-button" data-action="cart"><span class="icon" data-icon="bag"></span><span class="cart-word">Mi carrito</span><span id="cartCount" class="count">0</span></button>
+    </div>
+    <div class="container nav-row"><nav class="nav" aria-label="Navegación principal"><a href="index.html">Inicio</a><a href="productos.html">Productos</a><a href="ofertas.html">Ofertas <span class="nav-tag">%</span></a><a href="favoritos.html">Favoritos</a><a href="contacto.html">Contacto</a></nav><button class="location plain" data-action="location"><span class="icon" data-icon="pin"></span><span><small>Tu compra, más cerca</small><strong id="locationLabel">Elegir entrega <span>⌄</span></strong></span></button></div>
+  </header>
+  <main id="contenido"><section class="container page-intro"><a class="breadcrumb" href="index.html">Inicio</a><span class="breadcrumb-separator">/</span><span class="breadcrumb-current">Mis pedidos</span><div class="page-intro-content"><div><span class="eyebrow">TU HISTORIAL LOCAL</span><h1>Buenas compras para recordar.</h1><p>Consulta tus pedidos de demostración guardados en este navegador.</p></div><div class="intro-icon" aria-hidden="true"><span class="icon" data-icon="bag"></span></div></div></section>
+<section class="container orders-section" aria-label="Pedidos de demostración"><div id="ordersList"></div></section>
+</main>
+  <footer><div class="container footer-main"><div><a href="index.html" class="logo">Nova<span class="logo-market">Market</span><span class="logo-dot">.</span></a><p>Todo para tu día,<br>en un solo lugar.</p><span class="footer-demo">Proyecto de supermercado · El Salvador · USD</span></div><div><h3>Tu compra</h3><a href="productos.html">Productos</a><a href="ofertas.html">Ofertas</a><a href="favoritos.html">Favoritos</a><a href="pedidos.html">Mis pedidos</a></div><div><h3>Te acompañamos</h3><a href="contacto.html">Contacto</a><button data-action="delivery">Entrega y retiro</button><button data-action="help">Preguntas frecuentes</button><button data-action="privacy">Privacidad</button></div><div class="newsletter"><h3>Algo bueno está por venir</h3><p>Prueba la suscripción de demostración.</p><form id="newsletterForm"><input type="email" required placeholder="Tu correo electrónico" aria-label="Correo para suscripción de demostración"><button aria-label="Suscribirme">↗</button></form><small>No se envían correos en esta versión.</small></div></div><div class="container footer-bottom"><span>© <span id="year"></span> NovaMarket. Todo para tu día.</span><span>Una buena compra comienza aquí.</span></div></footer>
+  <dialog id="cartDialog" class="cart-dialog"><div class="dialog-heading"><div><span class="eyebrow">UNA BUENA ELECCIÓN</span><h2>Tu carrito <span id="drawerCount"></span></h2></div><button class="icon-button" data-close aria-label="Cerrar carrito">✕</button></div><div id="cartItems" class="cart-items"></div><div id="cartSummary"></div></dialog>
+  <dialog id="modal" class="modal"><button class="modal-close icon-button" data-close aria-label="Cerrar ventana">✕</button><div id="modalContent"></div></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <nav class="mobile-nav" aria-label="Navegación móvil"><a href="index.html"><span class="icon" data-icon="home"></span>Inicio</a><a href="productos.html"><span class="icon" data-icon="search"></span>Productos</a><a href="ofertas.html"><span class="icon" data-icon="tag"></span>Ofertas</a><a href="favoritos.html"><span class="icon" data-icon="heart"></span>Favoritos</a><a href="contacto.html"><span class="icon" data-icon="chat"></span>Contacto</a><button data-action="cart"><span class="icon" data-icon="bag"></span>Carrito <b id="mobileCount">0</b></button></nav>
+  <noscript><div class="container demo-note">Activa JavaScript para buscar productos, usar el carrito y realizar compras de demostración.</div></noscript>
+</body>
+</html>
