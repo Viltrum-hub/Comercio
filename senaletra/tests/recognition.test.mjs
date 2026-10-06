@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';
+import {features,resample,dtw,validSequence,classifySequence,classify} from '../recognition.mjs';
+const hand=Array.from({length:21},(_,i)=>({x:.3+(i%5)*.025,y:.3+Math.floor(i/5)*.04,z:0}));
+const f=features(hand);assert.equal(f.length,60);
+const shifted=hand.map(p=>({x:2*p.x+.1,y:2*p.y-.2,z:p.z}));
+features(shifted).forEach((x,i)=>assert.ok(Math.abs(x-f[i])<1e-10));
+const mirrored=hand.map(p=>({...p,x:1-p.x}));features(mirrored).forEach((x,i)=>assert.ok(Math.abs(x-f[i])<1e-10));
+assert.equal(features(Array(21).fill({x:0,y:0,z:0})),null);
+assert.equal(classify(hand,{TEST:Array(12).fill(f)}).label,'TEST');
+assert.equal(classify(hand,{X:Array(12).fill(f),Y:Array(12).fill(f)}).label,null);
+const path=n=>Array.from({length:n},(_,i)=>[i/(n-1),Math.sin(i/(n-1)*Math.PI)]);
+assert.ok(dtw(resample(path(18)),resample(path(55)))<.004);
+const seq=Array.from({length:24},(_,i)=>Array(62).fill(i/24));assert.ok(validSequence(seq));
+assert.equal(classifySequence(seq,{A:[seq,seq]}).label,'A');
+assert.equal(classifySequence(seq,{A:[seq,seq],B:[seq,seq]}).label,null);
+assert.equal(classifySequence(seq,{A:[seq]}).label,null);
+assert.ok(!validSequence([[NaN]]));
+console.log('Recognition tests passed: scale, translation, mirror, unknown/ambiguous rejection, sequence speed normalization, import shape.');

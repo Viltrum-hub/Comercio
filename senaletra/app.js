@@ -1,99 +1,87 @@
-// Interfaz clásica: también muestra ayuda si se abre por doble clic.
-// Clasificación experimental propia; MediaPipe solo proporciona los puntos de la mano.
-const BASIC = ['A','B','I','L','V','W','Y'];
-const STATIC = 'ABCDEFGHIKLMNOPQRSTUVWXY'.split('');
-const d=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y,(a.z||0)-(b.z||0));
-function features(p){
- const scale=d(p[0],p[9]);if(scale<.02)return null;
- const sign=p[5].x<p[17].x?1:-1;
- return p.slice(1).flatMap(q=>[(q.x-p[0].x)*sign/scale,(q.y-p[0].y)/scale,((q.z||0)-(p[0].z||0))/scale]);
+import {BASIC,features,classify,sequenceFeatures,classifySequence,validSequence} from './recognition.mjs';
+const $=id=>document.getElementById(id),video=$('video'),canvas=$('overlay'),ctx=canvas.getContext('2d');
+const KEY='senaletra.learning.v2';let samples={},motion={};
+function validLabel(k){return typeof k==='string'&&k.trim().length>0&&k.length<=24&&!['__proto__','constructor','prototype'].includes(k);}
+function cleanData(raw){
+ if(!raw||typeof raw!=='object'||Array.isArray(raw))throw Error('Formato de archivo incorrecto.');
+ const out={samples:{},motion:{}};
+ for(const [k,v] of Object.entries(raw.samples||{}).slice(0,40))if(validLabel(k)&&Array.isArray(v))out.samples[k]=v.filter(x=>Array.isArray(x)&&x.length===60&&x.every(n=>Number.isFinite(n)&&Math.abs(n)<100)).slice(-240);
+ for(const [k,v] of Object.entries(raw.motion||{}).slice(0,40))if(validLabel(k)&&Array.isArray(v))out.motion[k]=v.filter(validSequence).slice(-20);
+ return out;
 }
-function classify(p,samples={}){
- const f=features(p);if(!f)return {letter:null,source:'Mano demasiado lejos'};
- const ranks=Object.entries(samples).filter(([k,v])=>STATIC.includes(k)&&v.length>=12).map(([k,v])=>{
- const ds=v.map(a=>Math.sqrt(a.reduce((s,x,i)=>s+(x-f[i])**2,0)/f.length)).sort((a,b)=>a-b);
- return [k,ds.slice(0,5).reduce((a,b)=>a+b,0)/5];}).sort((a,b)=>a[1]-b[1]);
- if(ranks.length&&ranks[0][1]<.12&&(!ranks[1]||ranks[1][1]-ranks[0][1]>.035))return {letter:ranks[0][0],source:'Calibración personal'};
- // Reglas conservadoras para un subconjunto de poses frontales. No confundir con un modelo del alfabeto completo.
- const scale=d(p[0],p[9]);
- const ext=[8,12,16,20].map(t=>d(p[t],p[0])>d(p[t-2],p[0])*1.2&&d(p[t],p[t-3])>scale*.55);
- const folded=[8,12,16,20].map(t=>d(p[t],p[0])<d(p[t-2],p[0])*1.1);
- const thumbOut=d(p[4],p[5])>scale*.65;
- const [i,m,r,l]=ext;let letter=null;
- if(i&&m&&r&&l&&!thumbOut)letter='B';
- else if(i&&!m&&!r&&!l&&folded.slice(1).every(Boolean)&&thumbOut)letter='L';
- else if(!i&&!m&&!r&&l&&folded.slice(0,3).every(Boolean))letter=thumbOut?'Y':'I';
- else if(i&&m&&r&&!l&&folded[3]&&!thumbOut)letter='W';
- else if(i&&m&&!r&&!l&&folded[2]&&folded[3]&&d(p[8],p[12])>scale*.35&&!thumbOut)letter='V';
- else if(folded.every(Boolean)&&p[4].y<p[6].y&&d(p[4],p[5])<scale*.65&&d(p[4],p[17])>scale*.8)letter='A';
- return {letter,source:letter?'Detección inicial · experimental':'Seña no reconocida · prueba calibrar'};
-}
-
-const $=id=>document.getElementById(id), video=$('video'),canvas=$('overlay'),ctx=canvas.getContext('2d');
-let model,stream,running=false,loading=false,raf,lastTime=-1,lastInfer=0,points=null,candidate=null,since=0,ready=false,latched=null,text='',practice=false,target='A',capture=null;
-let samples={};try{const raw=JSON.parse(localStorage.getItem('senaletra.samples.v1')||'{}');for(const k of STATIC)if(Array.isArray(raw[k]))samples[k]=raw[k].filter(v=>Array.isArray(v)&&v.length===60&&v.every(Number.isFinite)).slice(-240);}catch{}
+try{const raw=localStorage.getItem(KEY);if(raw){const d=cleanData(JSON.parse(raw));samples=d.samples;motion=d.motion;}else{samples=cleanData({samples:JSON.parse(localStorage.getItem('senaletra.samples.v1')||'{}')}).samples;}}catch{}
+let model,modelLoading,stream,running=false,loading=false,detectorActive=false,raf,session=0,lastVideo=-1,lastInfer=0,points=null,candidate=null,since=0,ready=false,latched=null,text='',practice=false,target='L',capture=null,captureTimer=null;
 const connections=[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[0,17],[17,18],[18,19],[19,20]];
 const say=s=>$('message').textContent=s;
-function counts(){$('sampleCounts').textContent=Object.entries(samples).filter(([,v])=>v.length).map(([k,v])=>`${k}: ${v.length} ejemplos`).join(' · ')||'Todavía no hay ejemplos guardados.';}
-function resetDetection(){points=null;candidate=null;since=0;ready=false;$('letter').textContent='—';$('confirm').disabled=true;$('progress').style.width='0';}
-function stop(){running=false;detectorActive=false;$('empty').hidden=false;cancelAnimationFrame(raf);if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null;resetDetection();ctx.clearRect(0,0,canvas.width,canvas.height);setButton('pause','play','Reanudar cámara');$('switch').disabled=true;$('status').textContent='Cámara apagada';$('stable').textContent='Cámara apagada';if(capture){capture=null;$('capture').disabled=false;$('trainingStatus').textContent='Captura cancelada. No se guardaron ejemplos.';}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify({version:2,language:'LESSA',samples,motion}));return true;}catch{say('Ejemplos disponibles en esta sesión; no se pudieron guardar en el navegador.');return false;}}
+function counts(){
+ const keys=[...new Set([...Object.keys(samples),...Object.keys(motion)])].sort();$('sampleCounts').replaceChildren();
+ if(!keys.length){$('sampleCounts').textContent='Todavía no has guardado ejemplos.';return;}
+ for(const k of keys){const d=document.createElement('div');d.textContent=`${k} · ${samples[k]?.length||0} posiciones / ${motion[k]?.length||0} movimientos`;$('sampleCounts').append(d);}
+}
+function setResult(label,source){$('letter').textContent=label||'—';$('letter').classList.toggle('long',!!label&&label.length>2);$('stable').textContent=source;}
+function resetDetection(){points=null;candidate=null;since=0;ready=false;$('confirm').disabled=true;$('progress').style.width='0';setResult(null,'Muestra una mano completa');}
+function cancelCapture(message='Captura cancelada.'){clearTimeout(captureTimer);capture=null;$('capture').disabled=false;$('finishCapture').disabled=true;$('motionFloating').hidden=true;$('trainingStatus').textContent=message;}
 function alertCamera(message){$('cameraAlert').hidden=false;$('cameraErrorText').textContent=message;}
-function clearCameraAlert(){$('cameraAlert').hidden=true;}
-function timeout(promise,ms,message){let t;return Promise.race([promise,new Promise((_,reject)=>{t=setTimeout(()=>reject(Error(message)),ms);})]).finally(()=>clearTimeout(t));}
-let modelLoading=null,detectorActive=false;
-async function loadDetector(){
- if(model)return model;
- if(modelLoading)return modelLoading;
- modelLoading=(async()=>{const {FilesetResolver,HandLandmarker}=await import('./vendor/vision_bundle.mjs');const files=await FilesetResolver.forVisionTasks('./vendor/wasm');return HandLandmarker.createFromOptions(files,{baseOptions:{modelAssetPath:'./vendor/hand_landmarker.task',delegate:'CPU'},runningMode:'VIDEO',numHands:1,minHandDetectionConfidence:.65,minHandPresenceConfidence:.65,minTrackingConfidence:.6});})();
- try{model=await modelLoading;return model;}finally{modelLoading=null;}
-}
-async function enableDetector(){
- $('retryDetector').disabled=true;
- try{await timeout(loadDetector(),30000,'El detector tarda demasiado en cargar. Comprueba que extrajiste toda la carpeta vendor.');if(!running)return;detectorActive=true;clearCameraAlert();$('status').textContent='Buscando mano';$('stable').textContent='Muestra tu mano';lastTime=-1;lastInfer=0;cancelAnimationFrame(raf);raf=requestAnimationFrame(loop);}
- catch(e){if(running){detectorActive=false;resetDetection();$('status').textContent='Cámara activa · detector pendiente';$('stable').textContent='Detector no disponible';alertCamera('La cámara está encendida, pero el detector no pudo cargar. Abre desde localhost y conserva la carpeta vendor completa. '+e.message);}}
- finally{$('retryDetector').disabled=false;}
-}
+function stop(){session++;running=false;detectorActive=false;cancelAnimationFrame(raf);if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;video.srcObject=null;resetDetection();cancelCapture();ctx.clearRect(0,0,canvas.width,canvas.height);$('empty').hidden=false;$('pause').textContent='Reanudar';$('pause').disabled=loading;$('switch').disabled=true;$('status').textContent='Cámara apagada';$('stable').textContent='Activa la cámara para comenzar';}
+async function loadDetector(){if(model)return model;if(modelLoading)return modelLoading;modelLoading=(async()=>{let vision,wasm='./vendor/wasm',asset='./vendor/hand_landmarker.task';try{vision=await import('./vendor/vision_bundle.mjs');}catch{vision=await import('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/vision_bundle.mjs');wasm='https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/wasm';asset='https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task';}const {FilesetResolver,HandLandmarker}=vision;const files=await FilesetResolver.forVisionTasks(wasm);return HandLandmarker.createFromOptions(files,{baseOptions:{modelAssetPath:asset,delegate:'CPU'},runningMode:'VIDEO',numHands:2,minHandDetectionConfidence:.65,minHandPresenceConfidence:.65,minTrackingConfidence:.6});})();try{model=await modelLoading;return model;}finally{modelLoading=null;}}
+function timeout(p,ms){let timer;return Promise.race([p,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('El detector tarda demasiado. Reintenta la carga.')),ms);})]).finally(()=>clearTimeout(timer));}
+async function enableDetector(){const token=session;$('retryDetector').disabled=true;try{await timeout(loadDetector(),30000);if(!running||session!==token)return;detectorActive=true;$('cameraAlert').hidden=true;lastVideo=-1;lastInfer=0;$('status').textContent='Buscando mano';cancelAnimationFrame(raf);raf=requestAnimationFrame(loop);}catch(e){if(running&&session===token){detectorActive=false;alertCamera('La cámara está activa, pero el detector no pudo cargar. '+e.message);$('status').textContent='Detector pendiente';}}finally{$('retryDetector').disabled=false;}}
 async function start(deviceId){
- if(loading)return;loading=true;clearCameraAlert();$('start').disabled=true;$('pause').disabled=true;setButton('start','camera','Solicitando cámara…');$('status').textContent='Esperando permiso';
+ if(loading)return;loading=true;const token=++session;let acquired;$('cameraAlert').hidden=true;$('start').disabled=true;$('pause').disabled=true;$('start').textContent='Solicitando permiso…';$('status').textContent='Esperando permiso';
  try{
- if(location.protocol==='file:')throw Error('Abriste index.html con doble clic. Extrae el ZIP, copia senaletra en C:\\xampp\\htdocs, inicia Apache y abre http://localhost/senaletra/. También puedes usar INICIAR_WINDOWS.bat si tienes Python.');
- if(!window.isSecureContext||!navigator.mediaDevices?.getUserMedia)throw Error('La cámara requiere localhost o HTTPS. Abre http://localhost/senaletra/ en este mismo equipo.');
- stream=await navigator.mediaDevices.getUserMedia({video:deviceId?{deviceId:{exact:deviceId}}:{width:{ideal:960},height:{ideal:600},facingMode:'user'},audio:false});
- video.srcObject=stream;await video.play();running=true;latched=null;$('empty').hidden=true;setButton('pause','pause','Pausar cámara');$('pause').disabled=false;$('switch').disabled=false;$('status').textContent='Cámara activa · cargando detector';$('stable').textContent='Preparando reconocimiento';
- // El video ya es visible antes de cargar la IA.
- enableDetector();
- }catch(e){stop();$('empty').hidden=false;const msg=e.name==='NotAllowedError'?'El navegador o Windows bloqueó la cámara. Abre los permisos del sitio (junto a la dirección), permite Cámara y vuelve a intentar.':e.name==='NotFoundError'?'No se encontró una cámara. Conéctala y vuelve a intentar.':e.name==='NotReadableError'?'No se puede usar la cámara. Cierra Teams, Zoom u otras aplicaciones y revisa los permisos de cámara de Windows.':e.message;$('status').textContent='No se pudo iniciar';say(msg);alertCamera(msg);}
- finally{loading=false;$('start').disabled=false;setButton('start','camera','Activar cámara');}
+ if(!window.isSecureContext||!navigator.mediaDevices?.getUserMedia)throw Error('Abre este sitio mediante HTTPS o localhost para usar la cámara.');
+ acquired=await navigator.mediaDevices.getUserMedia({video:deviceId?{deviceId:{exact:deviceId},width:{ideal:960},height:{ideal:600}}:{width:{ideal:960},height:{ideal:600},facingMode:'user'},audio:false});
+ if(token!==session){acquired.getTracks().forEach(t=>t.stop());return;}
+ stream=acquired;video.srcObject=stream;await video.play();if(token!==session)return;
+ running=true;latched=null;stream.getVideoTracks()[0].addEventListener('ended',()=>{if(running&&token===session){stop();alertCamera('La cámara se desconectó. Conéctala y vuelve a activarla.');}});
+ $('empty').hidden=true;$('pause').disabled=false;$('pause').textContent='Pausar';$('switch').disabled=false;$('status').textContent='Cargando detector';setResult(null,'Preparando reconocimiento…');void enableDetector();
+ }catch(e){if(token!==session)return;if(acquired)acquired.getTracks().forEach(t=>t.stop());stop();const messages={NotAllowedError:'Permite el acceso a la cámara desde los permisos del navegador.',NotFoundError:'No se encontró una cámara conectada.',NotReadableError:'La cámara está ocupada. Cierra otras aplicaciones que la estén usando.'};alertCamera(messages[e.name]||e.message);say(messages[e.name]||e.message);}
+ finally{loading=false;$('start').disabled=false;$('start').textContent='Activar cámara ↗';$('pause').disabled=!running&&!!document.hidden;}
 }
-// Alias para la explicación de error dentro del panel.
-const emptyP=$('empty').querySelector('p');
-function draw(p){canvas.width=video.videoWidth;canvas.height=video.videoHeight;ctx.clearRect(0,0,canvas.width,canvas.height);if(!p)return;ctx.strokeStyle='#55deca';ctx.fillStyle='#80ffea';ctx.lineWidth=2;for(const [a,b] of connections){ctx.beginPath();ctx.moveTo(p[a].x*canvas.width,p[a].y*canvas.height);ctx.lineTo(p[b].x*canvas.width,p[b].y*canvas.height);ctx.stroke();}for(const q of p){ctx.beginPath();ctx.arc(q.x*canvas.width,q.y*canvas.height,4,0,Math.PI*2);ctx.fill();}}
-function loop(now){if(!running||!detectorActive)return;try{if(video.readyState>=2&&video.currentTime!==lastTime&&now-lastInfer>70){lastTime=video.currentTime;lastInfer=now;const result=model.detectForVideo(video,now);points=result.landmarks[0]||null;draw(points);
- if(!points){resetDetection();latched=null;$('status').textContent='Buscando mano';$('stable').textContent='Muestra tu mano';}
- else{$('status').textContent='Mano detectada';const r=classify(points,samples);if(r.letter!==candidate){candidate=r.letter;since=now;ready=false;}const elapsed=now-since;ready=!!candidate&&elapsed>=650;$('letter').textContent=candidate||'—';$('stable').textContent=candidate?(ready?'Seña estable · '+r.source:'Mantén la posición'):r.source;$('confirm').disabled=!ready||!!capture;$('progress').style.width=(candidate?Math.min(100,elapsed/15):0)+'%';if(candidate&&latched&&candidate!==latched&&ready)latched=null;if($('auto').checked&&elapsed>=1500&&ready&&latched!==candidate&&!capture)confirm();}
- if(capture){if(points){const f=features(points);if(f)capture.values.push(f);}const remaining=Math.max(0,Math.ceil((capture.end-now)/1000));$('trainingStatus').textContent=`Mantén la seña ${capture.letter}… ${remaining} s`;if(now>=capture.end){const c=capture;capture=null;$('capture').disabled=false;if(c.values.length<12){$('trainingStatus').textContent='Faltan muestras. Mantén la mano visible e inténtalo otra vez.';}else{samples[c.letter]=[...(samples[c.letter]||[]),...c.values].slice(-240);try{localStorage.setItem('senaletra.samples.v1',JSON.stringify(samples));$('trainingStatus').textContent=`Letra ${c.letter} guardada. Repite con pequeñas variaciones.`;}catch{$('trainingStatus').textContent='Ejemplos disponibles en esta sesión; el navegador no permitió guardarlos.';}counts();resetDetection();}}}
- }}catch(e){console.error('Error de detección',e);detectorActive=false;resetDetection();ctx.clearRect(0,0,canvas.width,canvas.height);$('status').textContent='Cámara activa · detector detenido';$('stable').textContent='Detector no disponible';alertCamera('El video sigue activo, pero falló el reconocimiento. Prueba Reintentar detector. Si persiste, habilita la aceleración gráfica del navegador y vuelve a abrirlo.');}raf=running&&detectorActive?requestAnimationFrame(loop):null;}
-function render(){const w=$('word');w.replaceChildren();if(!text){const e=document.createElement('span');e.className='placeholder';e.textContent='Tu palabra aparecerá aquí';w.append(e);}for(const c of text){const e=document.createElement('span');e.className='tile'+(c===' '?' space':'');e.textContent=c===' '?'·':c;w.append(e);}w.scrollTop=w.scrollHeight;}
-function confirm(){if(!ready||!candidate||capture)return;if(practice){$('practiceFeedback').textContent=candidate===target?'¡Correcto! Puedes probar otra letra.':`Se detectó ${candidate}. Intenta formar ${target}.`;latched=candidate;return;}if(text.length>=100){say('Límite de 100 caracteres. Borra el mensaje para empezar otro.');return;}text+=candidate;latched=candidate;render();say(`Letra ${candidate} añadida. Retira la mano para repetirla en modo automático.`);}
-$('retryDetector').onclick=()=>{if(running)enableDetector();else start();};$('start').onclick=()=>start();$('pause').onclick=()=>running?stop():start();$('confirm').onclick=confirm;
-$('switch').onclick=async()=>{try{const devices=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput');if(devices.length<2){say('Solo hay una cámara disponible.');return;}const current=stream?.getVideoTracks()[0].getSettings().deviceId;const next=devices[(devices.findIndex(d=>d.deviceId===current)+1)%devices.length];stop();await start(next.deviceId);}catch{say('No fue posible cambiar de cámara.');}};
-function mirror(){video.classList.toggle('mirror',$('mirror').checked);canvas.classList.toggle('mirror',$('mirror').checked);} $('mirror').onchange=mirror;mirror();
-$('erase').onclick=()=>{text=text.slice(0,-1);render();};$('space').onclick=()=>{if(text.length<100&&text&&!text.endsWith(' ')){text+=' ';render();}};$('clear').onclick=()=>{if(!text||window.confirm('¿Borrar toda la palabra o mensaje?')){text='';render();}};
-$('speak').onclick=()=>{if(!text.trim()){say('Primero forma una palabra.');return;}if(!('speechSynthesis'in window)){say('Este navegador no admite lectura en voz alta.');return;}speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang='es-ES';u.rate=.85;u.onerror=()=>say('No se pudo reproducir la voz. Comprueba las voces instaladas.');speechSynthesis.speak(u);};
-for(const btn of document.querySelectorAll('[data-close]'))btn.onclick=()=>$(btn.dataset.close).close();
-$('guideButton').onclick=()=>$('guide').showModal();$('settingsButton').onclick=()=>{counts();$('settings').showModal();};
-function detail(c){$('detailTitle').textContent='Letra '+c;$('detailImage').src=`assets/${c}.png`;$('detailImage').alt=`Seña de la letra ${c}, según la referencia proporcionada`;$('detailText').textContent=['J','Z'].includes(c)?'Esta letra requiere movimiento. Su reconocimiento aún no está implementado.':BASIC.includes(c)?'Disponible en detección inicial. Si se confunde, calibra esta letra con tu mano.':'Para reconocer esta letra, guarda ejemplos en Calibración y ajustes.';$('detail').showModal();}
-for(const c of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'){const b=document.createElement('button'),img=document.createElement('img'),label=document.createElement('strong');img.src=`assets/${c}.png`;img.alt='Seña '+c;label.textContent=c;b.append(img,label);if('JZ'.includes(c)){const s=document.createElement('small');s.textContent='Movimiento';b.append(s);}b.onclick=()=>detail(c);$('alphabet').append(b);}
-for(const c of STATIC){const o=document.createElement('option');o.value=o.textContent=c;$('trainLetter').append(o);}
-$('trainGuide').onclick=()=>detail($('trainLetter').value);$('targetGuide').onclick=()=>detail(target);
-$('capture').onclick=()=>{if(!running||!points){$('trainingStatus').textContent='Activa la cámara y muestra tu mano antes de capturar.';return;}capture={letter:$('trainLetter').value,end:performance.now()+2200,values:[]};$('capture').disabled=true;};
-$('resetSamples').onclick=()=>{if(window.confirm('¿Borrar todos tus ejemplos de calibración?')){samples={};try{localStorage.removeItem('senaletra.samples.v1');}catch{}counts();resetDetection();}};
-$('settings').addEventListener('close',()=>{if(capture){capture=null;$('capture').disabled=false;$('trainingStatus').textContent='Captura cancelada.';}});
-function mode(on){practice=on;$('practiceBar').hidden=!on;$('practice').classList.toggle('active',on);$('translator').classList.toggle('active',!on);$('practiceFeedback').textContent='';latched=null;}
-$('practice').onclick=()=>mode(true);$('translator').onclick=()=>mode(false);$('nextTarget').onclick=()=>{const available=[...new Set([...BASIC,...Object.keys(samples).filter(k=>samples[k].length>=12)])].filter(k=>k!==target);target=available[Math.floor(Math.random()*available.length)];$('target').textContent=target;$('practiceFeedback').textContent='';latched=null;};
-$('printGuide').onclick=()=>window.open('guia.html','_blank','noopener');
-window.addEventListener('pagehide',stop);document.addEventListener('visibilitychange',()=>{if(document.hidden&&running){stop();say('Cámara pausada al cambiar de pestaña.');}});
-if(location.protocol==='file:'){say('Usa INICIAR_WINDOWS.bat o abre http://localhost/senaletra con XAMPP.');emptyP.textContent='Para activar la cámara abre este proyecto desde localhost. Consulta LEEME.html.';}
-counts();
-
-if(location.protocol==='file:')alertCamera('Para usar la cámara, abre el proyecto desde localhost. Pulsa Activar cámara para ver las instrucciones.');
+function draw(p){if(canvas.width!==video.videoWidth||canvas.height!==video.videoHeight){canvas.width=video.videoWidth;canvas.height=video.videoHeight;}ctx.clearRect(0,0,canvas.width,canvas.height);if(!p)return;ctx.strokeStyle='#b4f0cb';ctx.fillStyle='#d4ffe0';ctx.lineWidth=2;for(const [a,b] of connections){ctx.beginPath();ctx.moveTo(p[a].x*canvas.width,p[a].y*canvas.height);ctx.lineTo(p[b].x*canvas.width,p[b].y*canvas.height);ctx.stroke();}for(const q of p){ctx.beginPath();ctx.arc(q.x*canvas.width,q.y*canvas.height,3,0,Math.PI*2);ctx.fill();}}
+function processCapture(now){
+ if(!capture)return;
+ const c=capture;
+ if(now<c.starts){const n=Math.ceil((c.starts-now)/1000);$('trainingStatus').textContent=`Prepárate: ${n}…`;$('stable').textContent=`Prepárate: ${n}…`;return;}
+ if(points&&features(points)){c.frames.push(points.map(p=>({...p})));c.misses=0;}else c.misses++;
+ if(c.mode!=='static'&&c.misses>5&&c.frames.length){cancelCapture('Captura cancelada: la mano salió del encuadre. Repite la seña completa.');say('Mantén una sola mano visible durante todo el movimiento.');return;}
+ const remaining=Math.max(0,Math.ceil((c.ends-now)/1000));$('trainingStatus').textContent=c.mode==='static'?`Mantén ${c.label} · ${remaining} s`:`Realiza ${c.label||'la seña'} y pulsa Terminar · máximo ${remaining} s`;
+ $('stable').textContent=c.mode==='static'?'Capturando posición…':'Capturando movimiento…';
+ if(now>=c.ends)finishCapture();
+}
+function loop(now){if(!running||!detectorActive)return;try{if(video.readyState>=2&&video.currentTime!==lastVideo&&now-lastInfer>=80){lastVideo=video.currentTime;lastInfer=now;const result=model.detectForVideo(video,now);points=result.landmarks.length===1?result.landmarks[0]:null;draw(points);
+ if(capture){$('status').textContent=points?'Capturando ejemplo':'Muestra una sola mano';processCapture(now);}
+ else if(!points){resetDetection();latched=null;$('status').textContent=result.landmarks.length>1?'Usa una sola mano':'Buscando mano';$('stable').textContent=result.landmarks.length>1?'Esta versión aprende señas de una mano':'Muestra una mano completa';}
+ else{const r=classify(points,samples);$('status').textContent='Mano detectada';if(r.label!==candidate){candidate=r.label;since=now;ready=false;}const elapsed=now-since;ready=!!candidate&&elapsed>=800;setResult(candidate,candidate?(ready?r.source:'Mantén la posición…'):r.source);$('confirm').disabled=!ready;$('progress').style.width=(candidate?Math.min(100,elapsed/15):0)+'%';if(candidate&&latched&&candidate!==latched&&ready)latched=null;if($('auto').checked&&elapsed>=1500&&ready&&latched!==candidate)confirm();}
+ }}catch(e){detectorActive=false;resetDetection();cancelCapture();alertCamera('Se detuvo el detector. El video sigue activo; pulsa Reintentar detector.');$('status').textContent='Detector detenido';console.error(e);}raf=running&&detectorActive?requestAnimationFrame(loop):null;}
+function render(){$('word').replaceChildren();if(!text){const p=document.createElement('span');p.className='placeholder';p.textContent='Las palabras empiezan aquí…';$('word').append(p);}else $('word').textContent=text;$('charCount').textContent=`${text.length} / 200`;$('word').scrollTop=$('word').scrollHeight;}
+function confirm(){if(!ready||!candidate||capture)return;if(practice){$('practiceFeedback').textContent=candidate===target?'¡Correcto! Prueba otra letra.':`Se detectó ${candidate}. Intenta ${target}.`;latched=candidate;return;}const add=candidate.length===1?candidate:((text&&!text.endsWith(' ')?' ':'')+candidate+' ');if(text.length+add.length>200){say('El mensaje llegó al límite de 200 caracteres.');return;}text+=add;latched=candidate;render();say('Resultado añadido. Retira la mano para repetir en modo automático.');}
+function label(){return ($('customLabel').value.trim()||$('trainLetter').value).toLocaleUpperCase('es');}
+function beginCapture(mode,test=false){if(!running||!detectorActive||!points){$('trainingStatus').textContent='Activa la cámara y muestra una sola mano antes de capturar.';say('Activa la cámara y muestra una mano antes de capturar.');return false;}if(capture)return false;const k=label();if(!test&&!validLabel(k)){say('Escribe una etiqueta válida de hasta 24 caracteres.');return false;}const now=performance.now();capture={mode,test,label:test?null:k,starts:now+1800,ends:now+1800+(mode==='static'?2500:12000),frames:[],misses:0};$('capture').disabled=true;$('confirm').disabled=true;$('finishCapture').disabled=mode==='static';if(test){$('settings').close();$('motionFloating').hidden=false;}return true;}
+function finishCapture(){if(!capture)return;const c=capture;if(performance.now()<c.starts){say('Espera a que termine la cuenta atrás.');return;}capture=null;$('capture').disabled=false;$('finishCapture').disabled=true;$('motionFloating').hidden=true;const fs=c.frames.map(features).filter(Boolean);
+ if(fs.length<12){$('trainingStatus').textContent='No hay suficientes fotogramas válidos. Repite la captura.';say('Captura demasiado corta. Mantén la mano visible al menos un segundo.');return;}
+ if(c.mode==='static'){samples[c.label]=[...(samples[c.label]||[]),...fs].slice(-240);save();$('trainingStatus').textContent=`${c.label}: posición guardada. Repite con pequeñas variaciones.`;resetDetection();}
+ else{const seq=sequenceFeatures(c.frames);if(!seq){say('No se pudo procesar el movimiento.');return;}if(c.test){const r=classifySequence(seq,motion);candidate=r.label;ready=!!candidate;since=performance.now();setResult(candidate,r.source);$('confirm').disabled=!ready;$('progress').style.width='0';say(r.label?`Movimiento reconocido: ${r.label}. Confirma para añadirlo.`:r.source);detectorActive=false;cancelAnimationFrame(raf);$('status').textContent='Resultado de movimiento';$('retryDetector').textContent='Continuar detección';alertCamera('El resultado queda en pantalla para que lo confirmes. Pulsa Continuar detección cuando termines.');}
+ else{motion[c.label]=[...(motion[c.label]||[]),seq].slice(-20);save();$('trainingStatus').textContent=`${c.label}: movimiento guardado. Necesitas al menos 2 ejemplos; recomendamos 3 o más.`;resetDetection();}}
+ counts();
+}
+$('start').onclick=()=>start();$('pause').onclick=()=>running?stop():start();$('confirm').onclick=confirm;$('retryDetector').onclick=()=>running?enableDetector():start();
+$('switch').onclick=async()=>{try{const devices=(await navigator.mediaDevices.enumerateDevices()).filter(d=>d.kind==='videoinput');if(devices.length<2){say('Solo hay una cámara disponible.');return;}const current=stream?.getVideoTracks()[0].getSettings().deviceId;const next=devices[(devices.findIndex(d=>d.deviceId===current)+1)%devices.length];stop();await start(next.deviceId);}catch{say('No se pudo cambiar de cámara.');}};
+function mirror(){video.classList.toggle('mirror',$('mirror').checked);canvas.classList.toggle('mirror',$('mirror').checked);}$('mirror').onchange=mirror;mirror();
+$('erase').onclick=()=>{text=text.slice(0,-1);render();};$('space').onclick=()=>{if(text&&text.length<200&&!text.endsWith(' ')){text+=' ';render();}};$('clear').onclick=()=>{if(!text||window.confirm('¿Borrar todo el mensaje?')){text='';render();}};
+$('copy').onclick=async()=>{if(!text.trim()){say('Primero construye un mensaje.');return;}try{await navigator.clipboard.writeText(text);say('Mensaje copiado.');}catch{say('No se pudo copiar. Selecciona el mensaje y cópialo manualmente.');}};
+$('speak').onclick=()=>{if(!text.trim()){say('Primero construye un mensaje.');return;}if(!('speechSynthesis'in window)){say('El navegador no admite lectura en voz alta.');return;}speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);const voices=speechSynthesis.getVoices();u.voice=voices.find(v=>v.lang==='es-SV')||voices.find(v=>v.lang.startsWith('es'))||null;u.lang=u.voice?.lang||'es-SV';u.rate=.9;u.onerror=()=>say('No se pudo reproducir la voz. Revisa las voces disponibles.');speechSynthesis.speak(u);};
+function tab(name){practice=name==='practice';$('translateView').hidden=name==='learn';$('learnView').hidden=name!=='learn';$('practiceBar').hidden=!practice;for(const b of document.querySelectorAll('[data-tab]'))b.classList.toggle('active',b.dataset.tab===name);latched=null;$('practiceFeedback').textContent='';if(name==='learn'&&running){stop();say('Cámara pausada al abrir las referencias.');}}
+for(const b of document.querySelectorAll('[data-tab]'))b.onclick=()=>tab(b.dataset.tab);
+$('nextTarget').onclick=()=>{const available=[...new Set([...BASIC,...Object.keys(samples).filter(k=>k.length===1&&samples[k].length>=12)])].filter(k=>k!==target);target=available[Math.floor(Math.random()*available.length)];$('target').textContent=target;latched=null;$('practiceFeedback').textContent='';};
+function settings(){counts();$('settings').showModal();}$('settingsButton').onclick=settings;$('trainShortcut').onclick=settings;
+for(const b of document.querySelectorAll('[data-close]'))b.onclick=()=>$(b.dataset.close).close();
+for(const k of 'ABCDEFGHIJKLMNÑOPQRSTUVWXYZ'){const o=document.createElement('option');o.value=o.textContent=k;$('trainLetter').append(o);}
+$('capture').onclick=()=>beginCapture($('captureMode').value);$('finishCapture').onclick=finishCapture;$('motionFloating').onclick=finishCapture;
+$('settings').addEventListener('close',()=>{if(capture&&!capture.test)cancelCapture();});
+$('testMotion').onclick=()=>{if(!Object.values(motion).some(v=>v.length>=2)){$('trainingStatus').textContent='Guarda primero al menos 2 movimientos de una misma seña.';return;}beginCapture('motion',true);};
+$('deleteLabel').onclick=()=>{const k=label();if(window.confirm(`¿Borrar los ejemplos de ${k}?`)){if(capture)cancelCapture();delete samples[k];delete motion[k];save();counts();resetDetection();$('trainingStatus').textContent=`Ejemplos de ${k} borrados.`;}};
+$('exportSamples').onclick=()=>{const blob=new Blob([JSON.stringify({version:2,language:'LESSA',samples,motion},null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='senaletra-mis-ejemplos.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+$('importSamples').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{if(f.size>6*1024*1024)throw Error('El archivo supera 6 MB.');const raw=JSON.parse(await f.text());if(raw.version!==2||raw.language!=='LESSA')throw Error('Importa una exportación de SeñaLetra LESSA versión 2.');const d=cleanData(raw);if(!Object.keys(d.samples).length&&!Object.keys(d.motion).length)throw Error('No hay ejemplos válidos en este archivo.');if(!window.confirm('¿Añadir estos ejemplos? Las señas con el mismo nombre se combinarán.'))return;if(capture)cancelCapture();for(const [k,v]of Object.entries(d.samples))samples[k]=[...(samples[k]||[]),...v].slice(-240);for(const [k,v]of Object.entries(d.motion))motion[k]=[...(motion[k]||[]),...v].slice(-20);save();counts();resetDetection();$('trainingStatus').textContent='Ejemplos importados. Comprueba las señas antes de usarlas.';}catch(e){$('trainingStatus').textContent=e.message;}finally{e.target.value='';}};
+window.addEventListener('pagehide',stop);document.addEventListener('visibilitychange',()=>{if(document.hidden&&(running||loading)){stop();say('Cámara pausada al cambiar de pestaña.');}});counts();

@@ -1,9 +1,13 @@
-SeñaLetra 1.1 — prototipo educativo.
-Código de interfaz y clasificador: creado para este proyecto.
-MediaPipe Tasks Vision 0.10.22-rc.20250304, Google: Apache License 2.0.
+SeñaLetra · LESSA Lab
+MediaPipe Tasks Vision 0.10.22-rc.20250304, Google. Apache License 2.0.
 https://github.com/google-ai-edge/mediapipe
-https://www.npmjs.com/package/@mediapipe/tasks-vision
-Modelo: hand_landmarker float16 versión 1, distribuido por Google MediaPipe.
+Modelo Hand Landmarker float16 versión 1, Google MediaPipe.
 https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task
-Se usa para puntos de manos, no para clasificar un alfabeto completo.
-Lámina y recortes: referencia proporcionada por el usuario; autoría y licencia no identificadas. No se afirma que sean de dominio público ni que correspondan a LESSA. Verificar autorización antes de redistribución pública.
+El modelo localiza manos; no es un clasificador preentrenado de LESSA.
+Referencias educativas enlazadas; no se han copiado ni redistribuido sus imágenes o videos.
+https://sites.google.com/clases.edu.sv/lessa/recursos-m%C3%B3dulo-2
+https://sites.google.com/clases.edu.sv/lessa/m%C3%B3dulo-2
+https://editorial.ues.edu.sv/dees-lessa/
+Gráficos de interfaz: SVG/CSS propios; no representan una seña lingüística.
+Clasificación: reglas geométricas experimentales y aprendizaje por ejemplos personales (vecinos cercanos y alineación temporal DTW).
+No existe un modelo entrenado con corpus de múltiples personas ni una precisión validada de LESSA en esta entrega.
