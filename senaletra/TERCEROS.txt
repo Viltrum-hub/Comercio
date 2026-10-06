@@ -1,0 +1,9 @@
+SeñaLetra 1.1 — prototipo educativo.
+Código de interfaz y clasificador: creado para este proyecto.
+MediaPipe Tasks Vision 0.10.22-rc.20250304, Google: Apache License 2.0.
+https://github.com/google-ai-edge/mediapipe
+https://www.npmjs.com/package/@mediapipe/tasks-vision
+Modelo: hand_landmarker float16 versión 1, distribuido por Google MediaPipe.
+https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task
+Se usa para puntos de manos, no para clasificar un alfabeto completo.
+Lámina y recortes: referencia proporcionada por el usuario; autoría y licencia no identificadas. No se afirma que sean de dominio público ni que correspondan a LESSA. Verificar autorización antes de redistribución pública.
