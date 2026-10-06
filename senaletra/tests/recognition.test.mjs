@@ -16,3 +16,18 @@ assert.equal(classifySequence(seq,{A:[seq,seq],B:[seq,seq]}).label,null);
 assert.equal(classifySequence(seq,{A:[seq]}).label,null);
 assert.ok(!validSequence([[NaN]]));
 console.log('Recognition tests passed: scale, translation, mirror, unknown/ambiguous rejection, sequence speed normalization, import shape.');
+const {isCPose,qualityOfStatic,MotionSegmenter}=await import('../recognition.mjs');
+const cHand=Array.from({length:21},()=>({x:.5,y:.8,z:0}));
+cHand[1]={x:.4,y:.77,z:0};cHand[2]={x:.41,y:.7,z:0};cHand[3]={x:.43,y:.62,z:0};cHand[4]={x:.48,y:.6,z:0};
+for(const [base,x,y]of [[5,.44,.62],[9,.5,.6],[13,.56,.62],[17,.62,.65]]){cHand[base]={x,y,z:0};cHand[base+1]={x,y:y-.14,z:0};cHand[base+2]={x:x+.05,y:y-.19,z:0};cHand[base+3]={x:x+.11,y:y-.16,z:0};}
+assert.ok(isCPose(cHand));assert.equal(classify(cHand).label,'C');
+const touching=cHand.map(p=>({...p}));touching[4]={...touching[8]};assert.ok(!isCPose(touching));
+assert.ok(qualityOfStatic(Array.from({length:20},()=>cHand)).ok);
+assert.ok(!qualityOfStatic([cHand]).ok);
+const bHand=cHand.map(p=>({...p}));for(const base of [5,9,13,17]){for(let j=1;j<=3;j++)bHand[base+j]={x:bHand[base].x,y:bHand[base].y-j*.12,z:0};}bHand[4]={x:.44,y:.61,z:0};
+assert.equal(classify(bHand,{C:Array(12).fill(features(cHand))}).label,'B','Calibrating C must not disable uncalibrated B');
+function segment(duration){const detector=new MotionSegmenter();let outputs=[];for(let now=0;now<duration+2000;now+=80){const dx=now<500?0:Math.min(.18,(now-500)/duration*.18);const points=cHand.map(p=>({...p,x:p.x+dx}));const result=detector.push(points,now);if(result?.frames)outputs.push(result);}return outputs;}
+assert.equal(segment(1400).length,1);assert.equal(segment(3200).length,1);
+const still=new MotionSegmenter();for(let i=0;i<50;i++)assert.equal(still.push(cHand,i*80),null);
+still.push(null,5000);assert.equal(still.active,null);
+console.log('Additional checks passed: conservative C/O distinction, C calibration preserves B, static quality, slow/fast motion segmentation, no motion for a still hand.');
