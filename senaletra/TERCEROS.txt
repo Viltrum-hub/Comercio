@@ -4,7 +4,9 @@ https://github.com/google-ai-edge/mediapipe
 Modelo Hand Landmarker float16 versión 1, Google MediaPipe.
 https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task
 El modelo localiza manos; no es un clasificador preentrenado de LESSA.
-Referencias educativas enlazadas; no se han copiado ni redistribuido sus imágenes o videos.
+Abecedario: lámina educativa Módulo 2 del Curso de alfabetización en LESSA para padres, madres y cuidadores de niñez sorda y otros actores interesados. Se conserva la lámina completa y sus créditos institucionales; los recortes por letra son referencias de estudio, no datos de entrenamiento. Fuente: https://sites.google.com/clases.edu.sv/lessa/recursos-m%C3%B3dulo-2
+PDF original: https://drive.google.com/file/d/1Mf7GN1G7BLsshmbpdHr7BbML5Bt1l5Z2/view
+Otros recursos educativos se enlazan sin copiar sus videos.
 https://sites.google.com/clases.edu.sv/lessa/recursos-m%C3%B3dulo-2
 https://sites.google.com/clases.edu.sv/lessa/m%C3%B3dulo-2
 https://editorial.ues.edu.sv/dees-lessa/

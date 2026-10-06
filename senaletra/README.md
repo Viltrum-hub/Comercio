@@ -30,7 +30,7 @@ La publicación incluye vendor/ con MediaPipe y modelo oficial local. Si la copi
 - https://sites.google.com/clases.edu.sv/lessa/m%C3%B3dulo-2
 - https://editorial.ues.edu.sv/dees-lessa/
 
-Son referencias enlazadas, no un corpus descargado de entrenamiento. No se redistribuyen sus videos o láminas.
+La guía del abecedario usa recortes de la lámina educativa LESSA Módulo 2 y mantiene la lámina completa con sus créditos para impresión. Los demás recursos se enlazan. Estas imágenes no son un corpus de entrenamiento.
 
 ## Verificación
 
