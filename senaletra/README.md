@@ -22,7 +22,7 @@ Los movimientos se remuestrean a 24 fotogramas de características y se comparan
 
 Servir esta carpeta mediante localhost o HTTPS. Para probar localmente: `python -m http.server 8000 --directory senaletra` y abrir http://localhost:8000. Los datos se guardan en localStorage de cada navegador y origen. No se guardan fotos ni videos; solo coordenadas.
 
-La publicación incluye vendor/ con MediaPipe y modelo oficial local. Si la copia de GitHub no incluye vendor/, app.js utiliza las mismas versiones desde jsDelivr y Google; necesita conexión para cargarlas. El video sigue procesándose localmente.
+El detector oficial se carga desde jsDelivr y Google con versiones fijas; necesita conexión para cargarlo. El video sigue procesándose localmente. También se admite una carpeta vendor/ completa para ejecutar sin estas descargas.
 
 ## Referencias
 
