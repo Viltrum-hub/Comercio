@@ -20,7 +20,7 @@ Los movimientos se remuestrean a 24 fotogramas de características y se comparan
 
 ## Ejecución
 
-Servir esta carpeta mediante localhost o HTTPS. Para probar localmente: `python -m http.server 8000 --directory senaletra` y abrir http://localhost:8000. Los datos se guardan en localStorage de cada navegador y origen. No se guardan fotos ni videos; solo coordenadas.
+Servir dist/ mediante localhost o HTTPS. Para probar localmente: `python -m http.server 8000 --directory dist` y abrir http://localhost:8000. Los datos se guardan en localStorage de cada navegador y origen. No se guardan fotos ni videos; solo coordenadas.
 
 El detector oficial se carga desde jsDelivr y Google con versiones fijas; necesita conexión para cargarlo. El video sigue procesándose localmente. También se admite una carpeta vendor/ completa para ejecutar sin estas descargas.
 
@@ -49,3 +49,12 @@ La guía del abecedario usa recortes de la lámina educativa LESSA Módulo 2 y m
 - Calibrar una letra ya no bloquea las reglas iniciales de otras letras sin calibrar.
 
 Pruebas: `node tests/recognition.test.mjs` y `node tests/interface.test.mjs`. Incluyen muestras geométricas sintéticas para regresión y una simulación del DOM para navegación y controles. No miden precisión con personas reales.
+
+
+## Entrenamiento compartido en Supabase
+
+Proyecto exclusivo SeñaLetra (`vitfrnraxtkncjybzjrx`); no utiliza el proyecto musical. La tabla `public.senaletra_shared_examples` conserva capturas compactadas (12–24 fotogramas × 60 coordenadas para posición, 24 × 62 para movimiento). Se valida la forma y rango en Postgres; RLS permite lectura e inserción públicas, sin UPDATE/DELETE y sin marcar muestras como revisadas. Las claves secretas no se incluyen en el cliente.
+
+Al guardar una captura con Compartir activado se envía una copia. El botón Compartir ejemplos de esta letra sube capturas existentes y permite reintentar; los IDs derivados del contenido evitan duplicados. Cargar ejemplos compartidos carga hasta 50 de cada tipo para la letra seleccionada, sin alterar las muestras personales. Son ejemplos comunitarios no validados, no un modelo entrenado científicamente. La evaluación no publica muestras. Si falla la red, se informa y permanece el guardado local.
+
+Las capturas previas están únicamente en el navegador del usuario hasta que las comparte. No hay autenticación de colaboradores ni limitación por persona; las contribuciones públicas requieren revisión antes de usarlas como conjunto de referencia validado.
