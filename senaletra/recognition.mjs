@@ -48,8 +48,11 @@ export function dtw(a,b){
  for(let i=1;i<=a.length;i++){const row=Array(b.length+1).fill(Infinity);for(let j=1;j<=b.length;j++)row[j]=sequenceCost(a[i-1],b[j-1])+Math.min(prev[j],row[j-1],prev[j-1]);prev=row;}
  return prev[b.length]/Math.max(a.length,b.length);
 }
+function tipTrack(seq,tip){const offset=(tip-1)*3;const origin=[seq[0][offset]+seq[0][60],seq[0][offset+1]+seq[0][61]];return seq.map(f=>[f[offset]+f[60]-origin[0],f[offset+1]+f[61]-origin[1]]);}
+function motionDistance(a,b,label){const tip=label==='J'?20:8;return .65*dtw(a,b)+.35*dtw(tipTrack(a,tip),tipTrack(b,tip));}
 export function classifySequence(seq,examples){
- const ranks=Object.entries(examples).filter(([,v])=>v.length>=2).map(([label,v])=>({label,score:Math.min(...v.map(x=>dtw(seq,x)))})).sort((a,b)=>a.score-b.score);
+ if(!validSequence(seq))return {label:null,source:'Captura de movimiento incompleta'};
+ const ranks=Object.entries(examples).filter(([,v])=>v.length>=2).map(([label,v])=>({label,score:v.map(x=>motionDistance(seq,x,label)).sort((a,b)=>a-b).slice(0,2).reduce((sum,x)=>sum+x,0)/2})).sort((a,b)=>a.score-b.score);
  if(!ranks.length)return {label:null,source:'Guarda al menos 2 ejemplos de movimiento por seña'};
  if(ranks[0].score>.22||(ranks[1]&&ranks[1].score-ranks[0].score<.035))return {label:null,source:'Movimiento sin coincidencia clara · añade ejemplos'};
  return {label:ranks[0].label,source:'Tus ejemplos · movimiento',distance:ranks[0].score};

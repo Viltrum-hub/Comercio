@@ -14,3 +14,12 @@ nodes.get('trainLetter').value='C';nodes.get('trainLetter').onchange();assert.eq
 nodes.get('guideButton').onclick();assert.equal(nodes.get('guide').open,true);assert.equal(nodes.get('alphabet').children.length,30);
 tabs.find(x=>x.dataset.tab==='translate').onclick();assert.equal(nodes.get('trainView').hidden,true);assert.equal(results.hidden,false);
 console.log('Interface integration passed: app initialization, training navigation, J/C mode selection, availability badges, 30 alphabet references.');
+// Exercise a reviewed capture and reload it through actual serialization.
+const persisted=new Map();globalThis.localStorage={getItem:k=>persisted.get(k)||null,setItem:(k,v)=>persisted.set(k,v)};
+const captureApp=app+"\npendingExample={label:'C',mode:'static',values:Array.from({length:12},()=>Array(60).fill(.1))};await $('saveCapture').onclick();globalThis.savedSamples=samples;";
+await import('data:text/javascript;base64,'+Buffer.from(captureApp).toString('base64'));
+assert.equal(JSON.parse(persisted.get('senaletra.learning.v2')).samples.C.length,12);
+assert.ok(nodes.get('storageStatus').textContent.includes('Datos guardados'));
+const reloadApp=app+'\nglobalThis.reloadedSamples=samples;';await import('data:text/javascript;base64,'+Buffer.from(reloadApp).toString('base64'));
+assert.equal(globalThis.reloadedSamples.C.length,12);
+console.log('Persistence passed: capture save, serialized data and reload restoration.');
