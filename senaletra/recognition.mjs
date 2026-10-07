@@ -6,14 +6,17 @@ export function features(p){
  const sign=p[5].x<p[17].x?1:-1;
  return p.slice(1).flatMap(q=>[(q.x-p[0].x)*sign/scale,(q.y-p[0].y)/scale,((q.z||0)-(p[0].z||0))/scale]);
 }
-export const rms=(a,b)=>Math.sqrt(a.reduce((s,x,i)=>s+(x-b[i])**2,0)/a.length);
+export function rms(a,b){let sum=0;for(let i=0;i<a.length;i++){const d=a[i]-b[i];sum+=d*d;}return Math.sqrt(sum/a.length);}
+const bendCache=new WeakMap(),frameCache=new WeakMap();
 function bends(f){
- const points=[[0,0,0],...Array.from({length:20},(_,i)=>f.slice(i*3,i*3+3))];
- const cosine=(a,b,c)=>{const u=a.map((x,i)=>x-b[i]),v=c.map((x,i)=>x-b[i]);const n=Math.hypot(...u)*Math.hypot(...v);return n?u.reduce((sum,x,i)=>sum+x*v[i],0)/n:0;};
- return [5,9,13,17].flatMap(base=>[cosine(points[base],points[base+1],points[base+2]),cosine(points[base+1],points[base+2],points[base+3])]);
+ const cached=bendCache.get(f);if(cached)return cached;
+ const cosine=(a,b,c)=>{const ia=(a-1)*3,ib=(b-1)*3,ic=(c-1)*3;let dot=0,nu=0,nv=0;for(let j=0;j<3;j++){const u=f[ia+j]-f[ib+j],v=f[ic+j]-f[ib+j];dot+=u*v;nu+=u*u;nv+=v*v;}return nu&&nv?dot/Math.sqrt(nu*nv):0;};
+ const values=[];for(const base of [5,9,13,17])values.push(cosine(base,base+1,base+2),cosine(base+1,base+2,base+3));bendCache.set(f,values);return values;
 }
 export function shapeDistance(a,b){return .75*rms(a,b)+.25*rms(bends(a),bends(b));}
-function sequenceCost(a,b){return a.length===62&&b.length===62?.7*shapeDistance(a.slice(0,60),b.slice(0,60))+.3*rms(a.slice(60),b.slice(60)):rms(a,b);}
+function preparedFrame(f){let out=frameCache.get(f);if(!out){out={shape:f.slice(0,60),path:f.slice(60)};frameCache.set(f,out);}return out;}
+function sequenceCost(a,b){if(a.length!==62||b.length!==62)return rms(a,b);const x=preparedFrame(a),y=preparedFrame(b);return .7*shapeDistance(x.shape,y.shape)+.3*rms(x.path,y.path);}
+function nearestFive(v,f){const best=[Infinity,Infinity,Infinity,Infinity,Infinity];for(const a of v){const d=shapeDistance(a,f);if(d>=best[4])continue;let i=4;while(i>0&&d<best[i-1]){best[i]=best[i-1];i--;}best[i]=d;}return best.reduce((a,b)=>a+b,0)/5;}
 export function isCPose(p){
  const scale=distance(p[0],p[9]);if(scale<.02)return false;
  const curved=bends(features(p)).filter((_,i)=>i%2===0).filter(c=>c>-.94&&c<.1).length;
@@ -23,7 +26,7 @@ export function isCPose(p){
 }
 export function classify(p,samples={}){
  const f=features(p);if(!f)return {label:null,source:'Acerca la mano'};
- const ranks=Object.entries(samples).filter(([,v])=>v.length>=12).map(([k,v])=>[k,v.map(a=>shapeDistance(a,f)).sort((a,b)=>a-b).slice(0,5).reduce((a,b)=>a+b,0)/5]).sort((a,b)=>a[1]-b[1]);
+ const ranks=Object.entries(samples).filter(([,v])=>v.length>=12).map(([k,v])=>[k,nearestFive(v,f)]).sort((a,b)=>a[1]-b[1]);
  if(ranks.length){if(ranks[0][1]<.14&&(!ranks[1]||ranks[1][1]-ranks[0][1]>.03))return {label:ranks[0][0],source:'Tu calibración · posición',distance:ranks[0][1]};if(ranks.length>1&&ranks[0][1]<.18&&ranks[1][1]-ranks[0][1]<=.03)return {label:null,source:'Posición ambigua · añade ejemplos'};}
  const scale=distance(p[0],p[9]);
  const ext=[8,12,16,20].map(t=>distance(p[t],p[0])>distance(p[t-2],p[0])*1.2&&distance(p[t],p[t-3])>scale*.55);
