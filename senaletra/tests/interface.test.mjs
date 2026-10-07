@@ -23,3 +23,11 @@ assert.ok(nodes.get('storageStatus').textContent.includes('Datos guardados'));
 const reloadApp=app+'\nglobalThis.reloadedSamples=samples;';await import('data:text/javascript;base64,'+Buffer.from(reloadApp).toString('base64'));
 assert.equal(globalThis.reloadedSamples.C.length,12);
 console.log('Persistence passed: capture save, serialized data and reload restoration.');
+const multiApp=app+`\nfor(let i=0;i<3;i++){pendingExample={label:'C',mode:'static',values:Array.from({length:16},()=>Array(60).fill(.2+i*.1))};await $('saveCapture').onclick();if($('capture').disabled)throw Error('Cannot capture another example');}
+for(let i=0;i<3;i++){pendingExample={label:'J',mode:'motion',values:Array.from({length:24},()=>Array(62).fill(i*.1))};await $('saveCapture').onclick();}
+globalThis.multiSizes=captureSizes;`;
+await import('data:text/javascript;base64,'+Buffer.from(multiApp).toString('base64'));
+const multiple=JSON.parse(persisted.get('senaletra.learning.v2'));assert.equal(multiple.captureSizes.C.length,4);assert.equal(multiple.samples.C.length,60);assert.equal(multiple.motion.J.length,3);
+const multiReload=app+'\nglobalThis.multiReload={samples,motion,captureSizes};';await import('data:text/javascript;base64,'+Buffer.from(multiReload).toString('base64'));
+assert.equal(globalThis.multiReload.captureSizes.C.length,4);assert.equal(globalThis.multiReload.motion.J.length,3);
+console.log('Multiple captures passed: repeated C/J saves accumulate, next capture is enabled, counts and data survive reload.');
