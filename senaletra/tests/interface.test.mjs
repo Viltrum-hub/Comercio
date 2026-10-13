@@ -31,3 +31,9 @@ const multiple=JSON.parse(persisted.get('senaletra.learning.v2'));assert.equal(m
 const multiReload=app+'\nglobalThis.multiReload={samples,motion,captureSizes};';await import('data:text/javascript;base64,'+Buffer.from(multiReload).toString('base64'));
 assert.equal(globalThis.multiReload.captureSizes.C.length,4);assert.equal(globalThis.multiReload.motion.J.length,3);
 console.log('Multiple captures passed: repeated C/J saves accumulate, next capture is enabled, counts and data survive reload.');
+const cloudRows=[{label:'D',mode:'static',values:Array.from({length:24},()=>Array(60).fill(.2))},{label:'J',mode:'motion',values:Array.from({length:24},()=>Array(62).fill(.1))},{label:'J',mode:'motion',values:Array.from({length:24},()=>Array(62).fill(.2))}];
+globalThis.fetch=async()=>({ok:true,status:200,json:async()=>cloudRows});
+await nodes.get('loadAllShared').onclick();assert.ok(nodes.get('cloudStatus').textContent.includes('3 ejemplos'));assert.ok(nodes.get('sampleCounts').children.some(n=>n.textContent.includes('D')&&n.textContent.includes('nube: 1 posiciones')));assert.equal(nodes.get('loadAllShared').disabled,false);
+assert.equal(JSON.parse(persisted.get('senaletra.shared.cache.v1')).motion.J.length,2);
+globalThis.fetch=async()=>{throw Error('Prueba de red');};await nodes.get('loadShared').onclick();assert.ok(nodes.get('cloudStatus').textContent.includes('No se pudo cargar'));assert.equal(nodes.get('loadShared').disabled,false);assert.ok(nodes.get('sampleCounts').children.some(n=>n.textContent.includes('D')));
+console.log('Cloud recovery interface passed: button loads rows, counters show cloud examples, cache persists, failure preserves examples and re-enables retry.');
